@@ -128,3 +128,11 @@ Split boards do not inherit the top-level `[battery]` table. Defaults supplied b
 a board preset still apply when a user omits a field; an empty table does not
 erase preset values. Battery names and peripheral Battery Services use the same
 resolved configuration as the devices.
+
+### ESP32 battery input
+
+Supported ESP32 boards use calibrated ADC1 readings. Set an ADC1-capable GPIO
+and the board's divider in its battery table. The radio is initialized before
+RMK uses its RNG; when measuring a battery, ADC1 is reserved for measurement
+rather than the optional SAR-ADC entropy source. This automatic setup uses the
+BLE backend; custom radio shutdown or initialization needs its own entropy policy.

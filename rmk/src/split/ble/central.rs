@@ -257,10 +257,16 @@ pub(crate) async fn run_ble_peripheral_manager<
 }
 
 fn defaul_central_conn_param() -> RequestedConnParams {
+    // Cornix patch: a wider interval and a short peripheral latency for the split link.
+    // Upstream runs the split link at 7.5ms with latency 30 (the peripheral may skip up
+    // to 225ms of connection events). In a noisy 2.4GHz environment (USB 3.0 hub next
+    // to the central) the right half dropped / stuck keys; 15ms gives each event more
+    // margin for link-layer retransmission and latency 4 keeps the link supervised
+    // tightly without the peripheral sleeping through most events.
     RequestedConnParams {
-        min_connection_interval: Duration::from_micros(7500),
-        max_connection_interval: Duration::from_micros(7500),
-        max_latency: 30, // 225ms
+        min_connection_interval: Duration::from_millis(15),
+        max_connection_interval: Duration::from_millis(15),
+        max_latency: 4, // 75ms
         supervision_timeout: Duration::from_secs(5),
         ..Default::default()
     }

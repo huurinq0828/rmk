@@ -128,3 +128,10 @@ Split boards do not inherit the top-level `[battery]` table. Defaults supplied b
 a board preset still apply when a user omits a field; an empty table does not
 erase preset values. Battery names and peripheral Battery Services use the same
 resolved configuration as the devices.
+
+### RP2040 battery input
+
+RP2040 accepts an ADC-capable pin such as `PIN_26` in the board's battery table.
+Automatic conversion assumes a 3.3 V ADC reference. Set the external divider
+from your schematic; use a custom Rust millivolt reader for another reference.
+Failed ADC reads are skipped and retried at the next polling interval.

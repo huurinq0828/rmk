@@ -592,7 +592,11 @@ pub(crate) async fn set_conn_params<
     // Wait for 5 seconds before setting connection parameters to avoid connection drop
     embassy_time::Timer::after_secs(5).await;
 
-    // For macOS/iOS(aka Apple devices), both interval should be set to 15ms
+    // Cornix patch: request 15ms once and never step down to 7.5ms.
+    // Upstream asks for 15ms (what Apple accepts) and then 7.5ms "for best
+    // performance". Apple rejects the second request, but Windows accepts it,
+    // so Windows ended up on the tightest interval together with 2M PHY and
+    // dropped key reports on some adapters (repeated / stuck keys).
     // Reference: https://developer.apple.com/accessories/Accessory-Design-Guidelines.pdf
     update_conn_params(
         stack,
@@ -600,23 +604,6 @@ pub(crate) async fn set_conn_params<
         &RequestedConnParams {
             min_connection_interval: Duration::from_millis(15),
             max_connection_interval: Duration::from_millis(15),
-            max_latency: 30,
-            min_event_length: Duration::from_secs(0),
-            max_event_length: Duration::from_secs(0),
-            supervision_timeout: Duration::from_secs(5),
-        },
-    )
-    .await;
-
-    embassy_time::Timer::after_secs(5).await;
-
-    // Setting the conn param the second time ensures that we have best performance on all platforms
-    update_conn_params(
-        stack,
-        conn.raw(),
-        &RequestedConnParams {
-            min_connection_interval: Duration::from_micros(7500),
-            max_connection_interval: Duration::from_micros(7500),
             max_latency: 30,
             min_event_length: Duration::from_secs(0),
             max_event_length: Duration::from_secs(0),
@@ -699,13 +686,17 @@ async fn run_ble_keyboard<
     select(communication_task, inner).await;
 }
 
-// Update the PHY to 2M
+// Update the PHY to 1M (Cornix patch).
+// Upstream forces 2M PHY on every link. 2M is faster per packet but has less
+// link margin and some host adapters/drivers mishandle it. 1M PHY is used for
+// the host link and the split link alike; keyboard traffic is tiny so latency
+// is unaffected.
 pub(crate) async fn update_ble_phy<P: PacketPool>(
     stack: &Stack<'_, impl Controller + ControllerCmdAsync<LeSetPhy>, P>,
     conn: &Connection<'_, P>,
 ) {
     loop {
-        match conn.set_phy(stack, PhyKind::Le2M).await {
+        match conn.set_phy(stack, PhyKind::Le1M).await {
             Err(BleHostError::BleHost(Error::Hci(error))) => {
                 if 0x2A == error.to_status().into_inner() {
                     // Busy, retry

@@ -22,6 +22,17 @@ use crate::core_traits::Runnable;
 use crate::event::ClearPeerEvent;
 /// Cornix patch: rows at or above this offset belong to the split peripheral (right half).
 const CORNIX_SPLIT_ROW_OFFSET: u8 = 4;
+/// Cornix patch: the rotary encoder with this id sits on the split peripheral (right half).
+const CORNIX_SPLIT_ENCODER_ID: u8 = 1;
+
+/// Cornix patch: which half of the split a key or encoder position belongs to
+/// (`true` = right half / peripheral). Keys and encoders on the same side compare equal.
+fn cornix_split_side(pos: &KeyboardEventPos) -> bool {
+    match pos {
+        KeyboardEventPos::Key(k) => k.row >= CORNIX_SPLIT_ROW_OFFSET,
+        KeyboardEventPos::RotaryEncoder(e) => e.id == CORNIX_SPLIT_ENCODER_ID,
+    }
+}
 
 use crate::event::{
     ActionEvent, KeyboardEvent, KeyboardEventPos, ModifierEvent, SubscribableEvent, publish_event, publish_event_async,
@@ -1866,37 +1877,19 @@ impl<'a> Keyboard<'a> {
             None
         });
 
-        // Fall back to a slot recorded under the same pos (the keycode may have changed
-        // between press and release, e.g. when the layer changed in between).
-        let slot = slot.or_else(|| {
-            self.registered_keys.iter().enumerate().find_map(|(i, k)| {
-                if let Some(e) = k
-                    && event.pos == e.pos
-                {
-                    return Some(i);
-                }
-                None
-            })
-        });
-
         // Cornix patch: the upstream fallback was "any slot holding the same keycode".
         // On a split keyboard that lets a release coming from one half clear a key held
         // by the other half (seen after the central released a peripheral's keys on
-        // link loss and the peripheral was then physically released). Keep the
-        // keycode fallback, but only among slots registered from the same half as the
-        // release, so combo outputs / split macros within one half still unregister.
+        // link loss and the peripheral was then physically released). Keep the upstream
+        // search order (pos+keycode, then same keycode) but restrict the keycode
+        // fallback to slots registered from the same half as the release, so combo
+        // outputs / split macros within one half still unregister exactly as upstream.
         let slot = slot.or_else(|| {
-            let same_half = |a: &KeyboardEventPos, b: &KeyboardEventPos| match (a, b) {
-                (KeyboardEventPos::Key(x), KeyboardEventPos::Key(y)) => {
-                    (x.row >= CORNIX_SPLIT_ROW_OFFSET) == (y.row >= CORNIX_SPLIT_ROW_OFFSET)
-                }
-                (KeyboardEventPos::RotaryEncoder(x), KeyboardEventPos::RotaryEncoder(y)) => x.id == y.id,
-                _ => false,
-            };
+            let release_side = cornix_split_side(&event.pos);
             self.registered_keys.iter().enumerate().find_map(|(i, k)| {
                 if let Some(e) = k
                     && self.held_keycodes[i] == key
-                    && same_half(&event.pos, &e.pos)
+                    && cornix_split_side(&e.pos) == release_side
                 {
                     return Some(i);
                 }

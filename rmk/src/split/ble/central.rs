@@ -267,7 +267,10 @@ fn defaul_central_conn_param() -> RequestedConnParams {
         min_connection_interval: Duration::from_millis(15),
         max_connection_interval: Duration::from_millis(15),
         max_latency: 4, // 75ms
-        supervision_timeout: Duration::from_secs(5),
+        // Cornix patch: detect a lost right half within 2s instead of 5s so that keys it
+        // was holding are released sooner (the central releases them on disconnect).
+        // Spec minimum is (1 + latency) * interval * 2 = 150ms, so 2s is still generous.
+        supervision_timeout: Duration::from_secs(2),
         ..Default::default()
     }
 }
